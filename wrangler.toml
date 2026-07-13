@@ -1,0 +1,8 @@
+name = "myapp-api"
+main = "src/index.js"
+compatibility_date = "2024-12-18"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "my-app"
+database_id = "a70441ec-71f6-482c-8bf3-76b2d1ad5c32"

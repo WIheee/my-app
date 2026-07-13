@@ -1,0 +1,491 @@
+项目目录及文件内容（跳过项已完全隐藏）
+数据库
+├── functions
+│   └── api
+│       └── auth
+│           ├── login.js
+│           └── register.js
+├── src
+│   └── index.js
+├── package-lock.json
+├── package.json
+├── t
+└── wrangler.toml
+wrangler.toml{
+name = "myapp-api"
+main = "src/index.js"
+compatibility_date = "2024-12-18"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "my-app"
+database_id = "a70441ec-71f6-482c-8bf3-76b2d1ad5c32"
+}package.json{
+{
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "nanoid": "^6.0.0"
+  }
+}
+}package-lock.json{
+{
+  "name": "数据库",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "dependencies": {
+        "bcryptjs": "^3.0.3",
+        "nanoid": "^6.0.0"
+      }
+    },
+    "node_modules/bcryptjs": {
+      "version": "3.0.3",
+      "resolved": "https://registry.npmmirror.com/bcryptjs/-/bcryptjs-3.0.3.tgz",
+      "integrity": "sha512-GlF5wPWnSa/X5LKM1o0wz0suXIINz1iHRLvTS+sLyi7XPbe5ycmYI3DlZqVGZZtDgl4DmasFg7gOB3JYbphV5g==",
+      "license": "BSD-3-Clause",
+      "bin": {
+        "bcrypt": "bin/bcrypt"
+      }
+    },
+    "node_modules/nanoid": {
+      "version": "6.0.0",
+      "resolved": "https://registry.npmmirror.com/nanoid/-/nanoid-6.0.0.tgz",
+      "integrity": "sha512-mkUH+rPkwU2qPadJ0oJZOjeZ5Mxn8Q1UhevwkTRWNuUZzyia3h4rhzK39hxaHTk0o2OxB8W2SQ6A8k23ZDi1pQ==",
+      "funding": [
+        {
+          "type": "github",
+          "url": "https://github.com/sponsors/ai"
+        }
+      ],
+      "license": "MIT",
+      "bin": {
+        "nanoid": "bin/nanoid.js"
+      },
+      "engines": {
+        "node": "^22 || ^24 || >=26"
+      }
+    }
+  }
+}
+}t{
+#!/usr/bin/env python3
+import os, sys
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+import fnmatch
+
+MAX_SIZE = 1024 * 1024
+DEFAULT_SKIP_PATTERNS = [
+    "LICENSE",
+    "README.md",
+    ".git/",
+    "node_modules/",
+    "pack_icon.png",
+    "*.pyc",
+    "*.log",
+    "*.svg",
+    "*.png"
+]
+# 加载外部自定义
+SKIP_PATTERNS_FILE = ".skip_patterns"
+if Path(SKIP_PATTERNS_FILE).exists():
+    with open(SKIP_PATTERNS_FILE, "r", encoding="utf-8") as f:
+        extra = [line.strip() for line in f if line.strip() and not line.startswith("#")]
+    DEFAULT_SKIP_PATTERNS.extend(extra)
+
+def should_skip(path):
+    path_obj = Path(path)
+    parts = path_obj.parts
+    name = path_obj.name
+    for pat in DEFAULT_SKIP_PATTERNS:
+        pat = pat.strip()
+        if not pat:
+            continue
+        if pat.endswith('/'):  # 目录模式
+            dir_name = pat[:-1]
+            if dir_name in parts:
+                return True
+        else:
+            if fnmatch.fnmatch(name, pat):
+                return True
+    return False
+
+def tree(dir_path, prefix="", hidden=False, visited=None):
+    if visited is None:
+        visited = set()
+    real_path = Path(dir_path).resolve()
+    if real_path in visited:
+        return [f"{prefix}[循环链接]"]
+    visited.add(real_path)
+    lines = []
+    try:
+        entries = list(os.scandir(real_path))
+    except PermissionError:
+        return [f"{prefix}[权限不足]"]
+    # 过滤隐藏 && 过滤跳过项（完全隐藏）
+    entries = [e for e in entries if (hidden or not e.name.startswith('.')) and not should_skip(e.path)]
+    entries.sort(key=lambda e: (not e.is_dir(), e.name.lower()))
+    for i, e in enumerate(entries):
+        is_last = i == len(entries) - 1
+        lines.append(f"{prefix}{'└── ' if is_last else '├── '}{e.name}")
+        if e.is_dir():
+            lines.extend(tree(e.path, prefix + ("    " if is_last else "│   "), hidden, visited))
+    return lines
+
+def read_file(p):
+    try:
+        size = os.path.getsize(p)
+        if size > MAX_SIZE:
+            return f"[过大 {size} 字节]"
+        with open(p, 'r', encoding='utf-8') as f:
+            return f.read()
+    except UnicodeDecodeError:
+        return "[编码错误]"
+    except Exception as e:
+        return f"[错误: {e}]"
+
+def collect_files(root, hidden):
+    root_path = Path(root).resolve()
+    tasks = []
+    for dp, dn, fn in os.walk(root_path, topdown=True):
+        dp_path = Path(dp)
+        if should_skip(dp_path):   # 整个目录跳过
+            dn[:] = []
+            continue
+        if not hidden:
+            dn[:] = [d for d in dn if not d.startswith('.')]
+            fn = [f for f in fn if not f.startswith('.')]
+        for f in fn:
+            fp = Path(dp) / f
+            if not should_skip(fp):
+                tasks.append(fp)
+    return tasks
+
+def main():
+    print("=== 目录树 + 内容导出（完全隐藏跳过项） ===")
+    d = input("目录路径（回车=当前）: ").strip() or os.getcwd()
+    if not Path(d).is_dir():
+        sys.exit("路径无效")
+    hidden = input("包含隐藏文件？(y/N): ").strip().lower() == 'y'
+    embed = input("列出文件内容？(y/N): ").strip().lower() == 'y'
+
+    root = Path(d).resolve()
+    tree_lines = [root.name]
+    tree_lines.extend(tree(root, hidden=hidden))
+
+    contents = []
+    if embed:
+        print("收集文件...")
+        tasks = collect_files(root, hidden)
+        print(f"待读取文件数: {len(tasks)}")
+        if tasks:
+            with ThreadPoolExecutor() as ex:
+                results = list(ex.map(read_file, tasks))
+            for p, c in zip(tasks, results):
+                contents.append((str(p.relative_to(root)), c))
+            print(f"成功读取 {len(contents)} 个文件")
+
+    out_path = Path.cwd() / "tree.txt"
+    with open(out_path, "w", encoding="utf-8") as f:
+        f.write("项目目录及文件内容（跳过项已完全隐藏）\n")
+        f.write("\n".join(tree_lines))
+        if contents:
+            f.write("\n")
+            for rp, c in contents:
+                f.write(f"{rp}{{\n{c.rstrip()}\n}}")
+    print(f"保存至 {out_path}")
+
+if __name__ == "__main__":
+    main()
+}functions/api/auth/login.js{
+import bcrypt from 'bcryptjs'
+
+export async function onRequest(context) {
+  const { request, env } = context
+
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+
+  try {
+    const { loginId, password } = await request.json()
+
+    if (!loginId || !password) {
+      return new Response(JSON.stringify({ error: '请输入账号和密码' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    // 通过用户名或邮箱查找用户
+    const user = await env.DB.prepare(
+      'SELECT id, username, email, password_hash FROM users WHERE username = ? OR email = ?'
+    ).bind(loginId, loginId).first()
+
+    if (!user) {
+      return new Response(JSON.stringify({ error: '用户不存在' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    // 验证密码
+    const isValid = await bcrypt.compare(password, user.password_hash)
+    if (!isValid) {
+      return new Response(JSON.stringify({ error: '密码错误' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    // 登录成功，返回用户信息（不含密码）
+    return new Response(JSON.stringify({
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email
+      }
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })
+
+  } catch (error) {
+    console.error(error)
+    return new Response(JSON.stringify({ error: '服务器错误' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+}
+}functions/api/auth/register.js{
+import { nanoid } from 'nanoid'
+import bcrypt from 'bcryptjs'
+
+export async function onRequest(context) {
+  const { request, env } = context
+
+  if (request.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+
+  try {
+    const { email, username, password } = await request.json()
+
+    // 校验字段
+    if (!email || !username || !password) {
+      return new Response(JSON.stringify({ error: '请完整填写所有字段' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+    if (!email.includes('@')) {
+      return new Response(JSON.stringify({ error: '请输入有效的邮箱地址' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+    if (username.length < 2) {
+      return new Response(JSON.stringify({ error: '用户名至少2个字符' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+    if (password.length < 6) {
+      return new Response(JSON.stringify({ error: '密码至少6位' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    // 检查用户是否已存在
+    const existing = await env.DB.prepare(
+      'SELECT id FROM users WHERE username = ? OR email = ?'
+    ).bind(username, email).first()
+
+    if (existing) {
+      return new Response(JSON.stringify({ error: '用户名或邮箱已被注册' }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    // 哈希密码
+    const salt = await bcrypt.genSalt(10)
+    const passwordHash = await bcrypt.hash(password, salt)
+    const userId = nanoid()
+    const now = Date.now()
+
+    // 插入用户
+    await env.DB.prepare(
+      `INSERT INTO users (id, username, email, password_hash, created_at)
+       VALUES (?, ?, ?, ?, ?)`
+    ).bind(userId, username, email, passwordHash, now).run()
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: '注册成功'
+    }), {
+      status: 201,
+      headers: { 'Content-Type': 'application/json' }
+    })
+
+  } catch (error) {
+    console.error(error)
+    return new Response(JSON.stringify({ error: '服务器错误' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+}
+}src/index.js{
+// src/index.js
+import { nanoid } from 'nanoid'
+import bcrypt from 'bcryptjs'
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url)
+    const path = url.pathname
+
+    if (path === '/api/auth/register' && request.method === 'POST') {
+      return handleRegister(request, env)
+    }
+
+    if (path === '/api/auth/login' && request.method === 'POST') {
+      return handleLogin(request, env)
+    }
+
+    return new Response(JSON.stringify({ error: 'Not Found' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+}
+
+async function handleRegister(request, env) {
+  try {
+    const { email, username, password } = await request.json()
+
+    if (!email || !username || !password) {
+      return new Response(JSON.stringify({ error: '请完整填写所有字段' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+    if (!email.includes('@')) {
+      return new Response(JSON.stringify({ error: '请输入有效的邮箱地址' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+    if (username.length < 2) {
+      return new Response(JSON.stringify({ error: '用户名至少2个字符' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+    if (password.length < 6) {
+      return new Response(JSON.stringify({ error: '密码至少6位' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    const existing = await env.DB.prepare(
+      'SELECT id FROM users WHERE username = ? OR email = ?'
+    ).bind(username, email).first()
+
+    if (existing) {
+      return new Response(JSON.stringify({ error: '用户名或邮箱已被注册' }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    const salt = await bcrypt.genSalt(10)
+    const passwordHash = await bcrypt.hash(password, salt)
+    const userId = nanoid()
+    const now = Date.now()
+
+    await env.DB.prepare(
+      `INSERT INTO users (id, username, email, password_hash, created_at)
+       VALUES (?, ?, ?, ?, ?)`
+    ).bind(userId, username, email, passwordHash, now).run()
+
+    return new Response(JSON.stringify({
+      success: true,
+      message: '注册成功'
+    }), {
+      status: 201,
+      headers: { 'Content-Type': 'application/json' }
+    })
+
+  } catch (error) {
+    console.error(error)
+    return new Response(JSON.stringify({ error: '服务器错误' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+}
+
+async function handleLogin(request, env) {
+  try {
+    const { loginId, password } = await request.json()
+
+    if (!loginId || !password) {
+      return new Response(JSON.stringify({ error: '请输入账号和密码' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    const user = await env.DB.prepare(
+      'SELECT id, username, email, password_hash FROM users WHERE username = ? OR email = ?'
+    ).bind(loginId, loginId).first()
+
+    if (!user) {
+      return new Response(JSON.stringify({ error: '用户不存在' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    const isValid = await bcrypt.compare(password, user.password_hash)
+    if (!isValid) {
+      return new Response(JSON.stringify({ error: '密码错误' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      })
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      user: {
+        id: user.id,
+        username: user.username,
+        email: user.email
+      }
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' }
+    })
+
+  } catch (error) {
+    console.error(error)
+    return new Response(JSON.stringify({ error: '服务器错误' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' }
+    })
+  }
+}
+}
