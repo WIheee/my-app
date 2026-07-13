@@ -1,4 +1,10 @@
 {
+  "name": "myapp-api",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "build": "echo 'No build needed'"
+  },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "nanoid": "^6.0.0"
